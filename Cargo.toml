@@ -4,3 +4,5 @@ version = "0.1.0"
 authors = ["Ryan P. Brewster <RyanPBrewster@gmail.com>"]
 
 [dependencies]
+itertools = "0.7.8"
+rand = "0.5.5"
