@@ -22,7 +22,7 @@ struct Centroid {
     weight: f64,
 }
 
-impl std::fmt::Debug for Centroid {
+impl Debug for Centroid {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         write!(
             f,
@@ -67,6 +67,7 @@ impl PartialOrd for Centroid {
 }
 
 fn q(k: f64) -> f64 {
+    assert!(0.0 <= k && k <= 1.0, "{} expected to be in [0,1]", k);
     if k <= 0.5 {
         2.0 * k * k
     } else {
@@ -100,24 +101,23 @@ impl TDigest {
 
         let total_weight: f64 = a.iter().chain(b.iter()).map(|c| c.weight).sum();
 
-        let mut q0 = 0.0;
         let mut k1 = 1;
-        let mut q1 = q(k1 as f64 / max_size as f64);
+        let mut weight_so_far = 0.0;
+        let mut weight_to_break = q(k1 as f64 / max_size as f64) * total_weight;
 
         let mut acc = Centroid::new();
-        for c in a.iter().merge(b.iter()) {
-            acc.add(c);
-            if q0 + acc.weight / total_weight >= q1 {
+        for cur in a.iter().merge(b.iter()) {
+            if weight_so_far >= weight_to_break {
                 result.push(acc);
                 acc = Centroid::new();
-                q0 = q1;
                 k1 += 1;
-                q1 = q(k1 as f64 / max_size as f64);
+                weight_to_break = q(k1 as f64 / max_size as f64) * total_weight;
             }
+
+            weight_so_far += cur.weight;
+            acc.add(cur);
         }
-        if acc.weight > 0.0 {
-            result.push(acc);
-        }
+        result.push(acc);
 
         // TODO(rpb): see if calling `result.sort()` is necessary due to floating point arithmetic
         result
