@@ -14,12 +14,16 @@ pub trait Estimator {
 pub struct TDigest {
     max_size: usize,
     centroids: Vec<Centroid>,
+    min: f64,
+    max: f64,
     buffer: Vec<f64>,
 }
 
+#[derive(Clone)]
 struct Centroid {
     sum: f64,
     weight: f64,
+    mean: f64,
 }
 
 impl Debug for Centroid {
@@ -38,31 +42,32 @@ impl Centroid {
         Centroid {
             sum: 0.0,
             weight: 0.0,
+            mean: 0.0,
         }
     }
     fn single(x: f64) -> Centroid {
         Centroid {
             sum: x,
             weight: 1.0,
+            mean: x,
         }
     }
     fn add(&mut self, rhs: &Centroid) {
         self.sum += rhs.sum;
         self.weight += rhs.weight;
+        self.mean = self.sum / self.weight;
     }
 }
 
 impl PartialEq for Centroid {
     fn eq(&self, other: &Centroid) -> bool {
-        self.sum / self.weight == other.sum / other.weight
+        self.mean == other.mean
     }
 }
 
 impl PartialOrd for Centroid {
     fn partial_cmp(&self, other: &Centroid) -> Option<Ordering> {
-        let m1 = self.sum / self.weight;
-        let m2 = other.sum / other.weight;
-        m1.partial_cmp(&m2)
+        self.mean.partial_cmp(&other.mean)
     }
 }
 
@@ -75,12 +80,19 @@ fn q(k: f64) -> f64 {
     }
 }
 
+/// Find the value `0 <= chi <= 1` percent of the way between `a` and `b`
+fn interpolate(a: f64, b: f64, chi: f64) -> f64 {
+    a + (b - a) * chi
+}
+
 impl TDigest {
     pub fn new(max_size: usize) -> TDigest {
         TDigest {
             max_size,
             centroids: Vec::new(),
             buffer: Vec::new(),
+            min: std::f64::INFINITY,
+            max: std::f64::NEG_INFINITY,
         }
     }
     fn flush_buffer(&mut self) {
@@ -113,9 +125,8 @@ impl TDigest {
                 k1 += 1;
                 weight_to_break = q(k1 as f64 / max_size as f64) * total_weight;
             }
-
-            weight_so_far += cur.weight;
             acc.add(cur);
+            weight_so_far += cur.weight;
         }
         result.push(acc);
 
@@ -127,6 +138,12 @@ impl TDigest {
 impl Estimator for TDigest {
     fn add(&mut self, x: f64) {
         self.buffer.push(x);
+        if x < self.min {
+            self.min = x;
+        }
+        if x > self.max {
+            self.max = x;
+        }
         if self.buffer.len() >= self.max_size {
             self.flush_buffer();
         }
@@ -137,22 +154,34 @@ impl Estimator for TDigest {
         if self.centroids.is_empty() {
             return 0.0;
         }
+        let (first, last) = (
+            self.centroids.first().unwrap(),
+            self.centroids.last().unwrap(),
+        );
 
         let total_weight: f64 = self.centroids.iter().map(|c| c.weight).sum();
         let target_weight = q * total_weight;
 
-        let mut acc_weight = 0.0;
-        for i in 0..self.centroids.len() - 1 {
-            if acc_weight + self.centroids[i].weight > target_weight {
-                // The target is somewhere between this and the next centroid, so we interpolate.
-                let cur = self.centroids[i].sum / self.centroids[i].weight;
-                let next = self.centroids[i + 1].sum / self.centroids[i + 1].weight;
-                return cur + (next - cur) * (target_weight - acc_weight) / self.centroids[i].weight;
-            }
-            acc_weight += self.centroids[i].weight;
+        if target_weight <= first.weight / 2.0 {
+            return interpolate(self.min, first.mean, 2.0 * target_weight / first.weight);
         }
 
-        let last = self.centroids.last().expect("centroids is non-empty");
-        last.sum / last.weight
+        let mut weight_so_far = self.centroids[0].weight / 2.0;
+        for i in 0..self.centroids.len() - 1 {
+            let dw = (self.centroids[i].weight + self.centroids[i + 1].weight) / 2.0;
+            if weight_so_far + dw > target_weight {
+                // The target is somewhere between this and the next centroid, so we interpolate.
+                let cur = self.centroids[i].mean;
+                let next = self.centroids[i + 1].mean;
+                return cur + (next - cur) * (target_weight - weight_so_far) / dw;
+            }
+            weight_so_far += self.centroids[i].weight;
+        }
+
+        interpolate(
+            last.mean,
+            self.max,
+            2.0 * (total_weight - weight_so_far) / last.weight,
+        )
     }
 }
