@@ -175,7 +175,7 @@ impl Estimator for TDigest {
                 let next = self.centroids[i + 1].mean;
                 return cur + (next - cur) * (target_weight - weight_so_far) / dw;
             }
-            weight_so_far += self.centroids[i].weight;
+            weight_so_far += dw;
         }
 
         interpolate(
