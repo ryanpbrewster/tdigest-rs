@@ -16,7 +16,7 @@ fn main() {
 fn check_accuracy<D: Distribution<f64>>(dist: D, size: usize) {
     let mut prng = XorShiftRng::from_seed([42; 16]);
 
-    let mut e = tdigest::TDigest::new(128);
+    let mut e = tdigest::TDigest::new(100.0, 500);
     let mut buf = Vec::new();
     for _ in 0..size {
         let x = prng.sample(&dist);
