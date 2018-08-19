@@ -3,7 +3,7 @@ extern crate tdigest;
 
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::{Rng, SeedableRng, XorShiftRng};
-use tdigest::Estimator;
+use tdigest::{Estimator, Oracle};
 
 fn main() {
     println!("U(0, 100)");
@@ -16,7 +16,7 @@ fn main() {
 fn check_accuracy<D: Distribution<f64>>(dist: D, size: usize) {
     let mut prng = XorShiftRng::from_seed([42; 16]);
 
-    let mut e = tdigest::TDigest::new(100.0, 500);
+    let mut e = tdigest::simple::TDigest::new(100.0, 500);
     let mut buf = Vec::new();
     for _ in 0..size {
         let x = prng.sample(&dist);
@@ -24,21 +24,18 @@ fn check_accuracy<D: Distribution<f64>>(dist: D, size: usize) {
         buf.push(x);
     }
 
-    buf.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let oracle = Oracle::new(buf);
 
     let quantiles = vec![
         0.0001, 0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99, 0.9999,
     ];
     for q in quantiles {
-        let expected = buf[(q * buf.len() as f64) as usize];
+        let expected = oracle.quantile(q);
         let actual = e.estimate(q);
-        let err = (actual - expected) / expected;
+        let rank = oracle.rank(actual);
         println!(
-            "{:6.4} --- {:6.4} ({:6.4} {:6.4})",
-            q,
-            100.0 * err,
-            expected,
-            actual
+            "{:6.4} --- {:11.4} {:11.4} ({:6.4})",
+            q, expected, actual, rank,
         );
     }
 }
