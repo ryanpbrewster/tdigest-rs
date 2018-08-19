@@ -4,12 +4,12 @@ use std::fmt;
 #[derive(Debug)]
 pub struct TDigest {
     compression: f64,
-    max_size: usize,
     min: f64,
     max: f64,
     centroids: Vec<Centroid>,
     total_weight: f64,
     buffer: Vec<Centroid>,
+    buffer_size: usize,
 }
 
 #[derive(Clone)]
@@ -43,15 +43,15 @@ fn weighted_average(x1: f64, w1: f64, x2: f64, w2: f64) -> f64 {
 }
 
 impl TDigest {
-    pub fn new(compression: f64, max_size: usize) -> TDigest {
+    pub fn new(compression: f64, buffer_size: usize) -> TDigest {
         TDigest {
             compression,
-            max_size,
             min: 0.0,
             max: 0.0,
             centroids: Vec::new(),
             total_weight: 0.0,
-            buffer: Vec::new(),
+            buffer: Vec::with_capacity(buffer_size),
+            buffer_size,
         }
     }
 
@@ -95,7 +95,7 @@ impl TDigest {
 impl ::Estimator for TDigest {
     fn add(&mut self, x: f64) {
         self.buffer.push(Centroid::single(x));
-        if self.buffer.len() >= self.max_size {
+        if self.buffer.len() >= self.buffer_size {
             self.flush_buffer();
         }
     }
@@ -150,9 +150,10 @@ impl ::Estimator for TDigest {
 mod benches {
     use super::*;
     use test::Bencher;
+    use Estimator;
 
     fn run(size: usize) -> f64 {
-        let mut estimator = TDigest::new(100.0, 500);
+        let mut estimator = TDigest::new(100.0, 100);
         let mut n = 1;
         for _ in 0..size {
             estimator.add(n as f64 / size as f64);
@@ -162,17 +163,28 @@ mod benches {
     }
 
     #[bench]
-    fn small(b: &mut Bencher) {
+    fn n10_1(b: &mut Bencher) {
+        b.iter(|| run(10));
+    }
+
+    #[bench]
+    fn n10_2(b: &mut Bencher) {
         b.iter(|| run(100));
     }
-
     #[bench]
-    fn medium(b: &mut Bencher) {
+    fn n10_3(b: &mut Bencher) {
+        b.iter(|| run(1_000));
+    }
+    #[bench]
+    fn n10_4(b: &mut Bencher) {
         b.iter(|| run(10_000));
     }
-
     #[bench]
-    fn big(b: &mut Bencher) {
+    fn n10_5(b: &mut Bencher) {
+        b.iter(|| run(100_000));
+    }
+    #[bench]
+    fn n10_6(b: &mut Bencher) {
         b.iter(|| run(1_000_000));
     }
 }
